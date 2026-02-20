@@ -1,171 +1,141 @@
-"""LoginPage: Page Object for login functionality.
-Implements robust error handling for login, password toggle, and error messages."""
+"""BasePage: Abstract base class for all page objects.
+Provides safe Selenium wrappers with robust error handling and logging."""
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from src.pages.base_page import BasePage
-from src.utils.exceptions import LoginFailedError, ElementNotFoundError
-import time
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from src.utils.exceptions import ElementNotFoundError
 import logging
 
 
-class LoginPage(BasePage):
-    """Page object for login page with comprehensive error handling."""
-
-    # Locators - Update these based on actual application UI
-    USERNAME_INPUT = (By.ID, "username")
-    PASSWORD_INPUT = (By.ID, "password")
-    LOGIN_BUTTON = (By.ID, "loginBtn")
-    ERROR_MESSAGE = (By.ID, "errorMsg")
-    LOCKOUT_MESSAGE = (By.ID, "lockoutMsg")
-    DASHBOARD = (By.ID, "dashboard")
-    PASSWORD_TOGGLE = (By.ID, "passwordToggle")
+class BasePage:
+    """Base page object providing safe Selenium operations."""
 
     def __init__(self, driver):
-        """Initialize LoginPage with WebDriver.
+        """Initialize with Selenium WebDriver.
         
         Args:
             driver: Selenium WebDriver instance
         """
-        super().__init__(driver)
+        self.driver = driver
         self.logger = logging.getLogger(self.__class__.__name__)
+        self.wait = WebDriverWait(driver, 10)
 
-    def open(self, base_url):
-        """Open login page.
+    def find_element(self, locator, timeout=10):
+        """Safely find element by locator tuple (By, value).
         
         Args:
-            base_url: Base URL of the application
+            locator: Tuple of (By, value)
+            timeout: Maximum wait time in seconds
+            
+        Returns:
+            WebElement if found
+            
+        Raises:
+            ElementNotFoundError: If element not found within timeout
         """
         try:
-            self.driver.get(base_url)
-            self.logger.info(f"Opened login page: {base_url}")
-        except Exception as e:
-            self.logger.error(f"Failed to open login page: {base_url}")
-            raise
+            wait = WebDriverWait(self.driver, timeout)
+            element = wait.until(EC.presence_of_element_located(locator))
+            return element
+        except (NoSuchElementException, TimeoutException) as e:
+            self.logger.error(f"Element not found: {locator}")
+            raise ElementNotFoundError(f"Element not found: {locator}") from e
 
-    def login(self, username, password):
-        """Perform login with comprehensive error handling.
+    def click_element(self, locator, timeout=10):
+        """Safely click element.
         
         Args:
-            username: Username for login
-            password: Password for login
-            
-        Returns:
-            bool: True if login successful and dashboard visible
+            locator: Tuple of (By, value)
+            timeout: Maximum wait time in seconds
             
         Raises:
-            LoginFailedError: If login fails due to invalid credentials or account lockout
+            ElementNotFoundError: If element not found or not clickable
         """
         try:
-            self.logger.info(f"Attempting login for user: {username}")
-            
-            # Enter credentials
-            self.enter_text(self.USERNAME_INPUT, username)
-            self.enter_text(self.PASSWORD_INPUT, password)
-            
-            # Click login button
-            self.click_element(self.LOGIN_BUTTON)
-            
-            # Wait for response (dashboard, error, or lockout)
-            start_time = time.time()
-            timeout = 5  # 5 seconds timeout for login response
-            
-            while time.time() - start_time < timeout:
-                # Check for successful login (dashboard visible)
-                if self.is_element_visible(self.DASHBOARD, timeout=1):
-                    self.logger.info(f"Login successful for user: {username}")
-                    return True
-                
-                # Check for error message
-                if self.is_element_visible(self.ERROR_MESSAGE, timeout=1):
-                    error_msg = self.get_element_text(self.ERROR_MESSAGE)
-                    self.logger.error(f"Login failed: {error_msg}")
-                    raise LoginFailedError(f"Invalid credentials: {error_msg}")
-                
-                # Check for lockout message
-                if self.is_element_visible(self.LOCKOUT_MESSAGE, timeout=1):
-                    lockout_msg = self.get_element_text(self.LOCKOUT_MESSAGE)
-                    self.logger.error(f"Account locked: {lockout_msg}")
-                    raise LoginFailedError(f"Account locked: {lockout_msg}")
-                
-                time.sleep(0.2)
-            
-            # Timeout - no response received
-            self.logger.error("Login response timeout")
-            raise LoginFailedError("Login response timeout - no dashboard, error, or lockout message")
-            
-        except LoginFailedError:
-            raise
+            wait = WebDriverWait(self.driver, timeout)
+            element = wait.until(EC.element_to_be_clickable(locator))
+            element.click()
+            self.logger.info(f"Clicked element: {locator}")
         except Exception as e:
-            self.logger.error(f"Unexpected error during login: {str(e)}")
-            raise LoginFailedError(f"Login failed with unexpected error: {str(e)}") from e
+            self.logger.error(f"Failed to click element: {locator}")
+            raise ElementNotFoundError(f"Failed to click element: {locator}") from e
 
-    def get_error_message(self):
-        """Return error message text if visible.
+    def enter_text(self, locator, text, timeout=10):
+        """Safely enter text into element.
         
-        Returns:
-            str: Error message text, or None if not visible
-        """
-        try:
-            if self.is_element_visible(self.ERROR_MESSAGE, timeout=2):
-                return self.get_element_text(self.ERROR_MESSAGE)
-            return None
-        except ElementNotFoundError:
-            return None
-
-    def get_lockout_message(self):
-        """Return lockout message text if visible.
-        
-        Returns:
-            str: Lockout message text, or None if not visible
-        """
-        try:
-            if self.is_element_visible(self.LOCKOUT_MESSAGE, timeout=2):
-                return self.get_element_text(self.LOCKOUT_MESSAGE)
-            return None
-        except ElementNotFoundError:
-            return None
-
-    def toggle_password_visibility(self):
-        """Toggle password visibility and return input type.
-        
-        Returns:
-            str: Password input type after toggle ('text' or 'password')
+        Args:
+            locator: Tuple of (By, value)
+            text: Text to enter
+            timeout: Maximum wait time in seconds
             
         Raises:
-            ElementNotFoundError: If toggle button or password input not found
+            ElementNotFoundError: If element not found
         """
         try:
-            self.logger.info("Toggling password visibility")
-            self.click_element(self.PASSWORD_TOGGLE)
-            input_type = self.get_element_attribute(self.PASSWORD_INPUT, "type")
-            self.logger.info(f"Password input type after toggle: {input_type}")
-            return input_type
+            element = self.find_element(locator, timeout)
+            element.clear()
+            element.send_keys(text)
+            self.logger.info(f"Entered text in element: {locator}")
         except Exception as e:
-            self.logger.error("Failed to toggle password visibility")
-            raise ElementNotFoundError("Failed to toggle password visibility") from e
+            self.logger.error(f"Failed to enter text in element: {locator}")
+            raise ElementNotFoundError(f"Failed to enter text in element: {locator}") from e
 
-    def is_dashboard_visible(self):
-        """Check if dashboard is visible after login.
+    def is_element_visible(self, locator, timeout=10):
+        """Check if element is visible.
         
+        Args:
+            locator: Tuple of (By, value)
+            timeout: Maximum wait time in seconds
+            
         Returns:
-            bool: True if dashboard visible, False otherwise
+            bool: True if visible, False otherwise
         """
-        return self.is_element_visible(self.DASHBOARD, timeout=2)
+        try:
+            wait = WebDriverWait(self.driver, timeout)
+            element = wait.until(EC.visibility_of_element_located(locator))
+            return element.is_displayed()
+        except (NoSuchElementException, TimeoutException):
+            return False
 
-    def is_error_displayed(self):
-        """Check if error message is displayed.
+    def get_element_text(self, locator, timeout=10):
+        """Get text from element.
         
+        Args:
+            locator: Tuple of (By, value)
+            timeout: Maximum wait time in seconds
+            
         Returns:
-            bool: True if error message visible, False otherwise
+            str: Element text
+            
+        Raises:
+            ElementNotFoundError: If element not found
         """
-        return self.is_element_visible(self.ERROR_MESSAGE, timeout=2)
+        try:
+            element = self.find_element(locator, timeout)
+            return element.text
+        except Exception as e:
+            self.logger.error(f"Failed to get text from element: {locator}")
+            raise ElementNotFoundError(f"Failed to get text from element: {locator}") from e
 
-    def is_lockout_displayed(self):
-        """Check if lockout message is displayed.
+    def get_element_attribute(self, locator, attribute, timeout=10):
+        """Get attribute value from element.
         
+        Args:
+            locator: Tuple of (By, value)
+            attribute: Attribute name
+            timeout: Maximum wait time in seconds
+            
         Returns:
-            bool: True if lockout message visible, False otherwise
+            str: Attribute value
+            
+        Raises:
+            ElementNotFoundError: If element not found
         """
-        return self.is_element_visible(self.LOCKOUT_MESSAGE, timeout=2)
+        try:
+            element = self.find_element(locator, timeout)
+            return element.get_attribute(attribute)
+        except Exception as e:
+            self.logger.error(f"Failed to get attribute '{attribute}' from element: {locator}")
+            raise ElementNotFoundError(f"Failed to get attribute from element: {locator}") from e
