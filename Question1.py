@@ -1,8 +1,6 @@
 '''# Question 1 — Positive Transaction Validation
 
-## Difficulty
-
-Easy
+## Difficulty :-Easy
 
 ## Business Scenario
 
